@@ -98,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--avigilon_server", required=True, help='The server IP/FQDN of your Avigilon system. Format: IP:PORT or FQDN:PORT.')
     parser.add_argument("-u", "--avigilon_username", required=True, help='Your Avigilon username.')
     parser.add_argument("-p", "--avigilon_password", required=True, help='Your Avigilon password.')
-    parser.add_argument("-p", "--quality", default='low', help='Options: high/low. Determines quality of video stream. Default is low.')    
+    parser.add_argument("-q", "--quality", default='low', help='Options: high/low. Determines quality of video stream. Default is low.')    
     args = parser.parse_args()
 
     state['lumeo_app_id'] = args.lumeo_app_id

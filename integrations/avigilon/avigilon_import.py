@@ -76,10 +76,11 @@ def import_camera(camera):
         f"quality={state['quality']}"
     )
     lumeo_payload = {
-        "name": f"{camera['location']} - {camera['name']} - {camera['serial']}",
+        "name": f"{camera['location']} - {camera['name']} - {camera['serial']} ({state['quality']})",
         "source": "uri_stream",
         "stream_type": "rtsp",
         "uri": stream_url,
+        "insecure_disable_tls_verification": True
     }
     response = state['session'].post(f"https://api.lumeo.com/v1/apps/{state['lumeo_app_id']}/streams", 
                                      json=lumeo_payload,

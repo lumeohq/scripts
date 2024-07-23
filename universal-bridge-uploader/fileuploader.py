@@ -1,4 +1,5 @@
 import asyncio
+from typing import Union
 import logging
 import os
 
@@ -63,12 +64,12 @@ class LumeoUniversalBridgeUploader():
         return camera
 
 
-    async def get_camera_with_id(self, camera_id) -> JsonObject | None:
+    async def get_camera_with_id(self, camera_id) -> Union[JsonObject, None]:
         # Get a camera using the camera id. If doesnt exist, return None
         return await self.api_client.get_camera_with_id(camera_id)
     
 
-    async def upload_and_create_input_stream(self, file_path: str, camera: JsonObject) -> JsonObject | None:
+    async def upload_and_create_input_stream(self, file_path: str, camera: JsonObject) -> Union[JsonObject, None]:
         input_stream = None
         try:
             self.log_info(f"Uploading file, creating input stream for camera {camera['id']}")
@@ -90,11 +91,11 @@ class LumeoUniversalBridgeUploader():
         return input_stream
     
     
-    async def create_input_stream(self, file_url: str, camera: JsonObject) -> JsonObject | None:        
+    async def create_input_stream(self, file_url: str, camera: JsonObject) -> Union[JsonObject, None]:        
         self.log_info(f"Creating input stream for file {file_url} for camera {camera['id']}")
-        file_name = file_url.split("/")[-1]        
+        file_name = file_url.split("/")[-1].split("?")[0]        
         return await self.api_client.create_file_stream(file_name, file_url, camera['id'])        
-                        
+                                                
     async def queue(self, input_stream, camera):   
         self.log_info(f"Queuing deployment with input stream {input_stream['id']}")
 
@@ -169,7 +170,7 @@ class LumeoUniversalBridgeUploader():
             return False
         
         # If the file is not a valid file, skip it.
-        file_name = self.file_uri.split("/")[-1]
+        file_name = self.file_uri.split("/")[-1].split("?")[0]
         if file_name.split(".")[-1] not in ["mp4", "avi", "mov", "mkv", "wmv", "flv", "webm", "jpg", "jpeg", "png"]:
             self.log_warning(f"File is not a video file. Skipping : {self.file_uri}")
             return False

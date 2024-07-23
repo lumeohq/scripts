@@ -50,7 +50,7 @@ class LumeoApiClient:
         await self.client.aclose()
         
     @backoff.on_exception(backoff.expo, HTTPError, max_time=60, on_backoff=backoff_handler, giveup=backoff_no_giveup, logger=None)        
-    async def request(self, request_desc: str, method: str, url: str, timeout: Optional[Union[float, httpx.Timeout]] = None, **kwargs) -> httpx.Response | None:
+    async def request(self, request_desc: str, method: str, url: str, timeout: Optional[Union[float, httpx.Timeout]] = None, **kwargs) -> Union[httpx.Response, None]:
         try:
             self.log_debug(f"API request: {request_desc} : {url}")
             response = await self.client.request(method, url, headers=self.headers, timeout=timeout, **kwargs)
@@ -58,7 +58,7 @@ class LumeoApiClient:
             return response
         except HTTPError as err:            
             # Log error    
-            print(err)
+            print(f"{err} : {err.response.text}")
             message = err.response.status_code if isinstance(err, HTTPStatusError) else err #error.response.text
             self.log_warning(f"API request failed. Will retry. {request_desc}: {message}")
             
@@ -74,7 +74,7 @@ class LumeoApiClient:
             return None
         
     async def create_event(
-        self, event_type: str, severity: str, payload: str, deployment_id: str | None, camera_id: str | None
+        self, event_type: str, severity: str, payload: str, deployment_id: Union[str, None], camera_id: Union[str, None]
     ) -> None:
         event_json = {
             "category": "ftp-gateway",
@@ -106,7 +106,7 @@ class LumeoApiClient:
 
         return
 
-    async def get_camera_with_external_id(self, external_id: str) -> JsonObject | None:
+    async def get_camera_with_external_id(self, external_id: str) -> Union[JsonObject, None]:
         response = await self.request(
             f"Getting camera with external id {external_id}",
             "GET",
@@ -119,7 +119,7 @@ class LumeoApiClient:
         else:
             return None
         
-    async def get_camera_with_id(self, camera_id: str) -> JsonObject | None:
+    async def get_camera_with_id(self, camera_id: str) -> Union[JsonObject, None]:
         response = await self.request(
             f"Getting camera with id {camera_id}",
             "GET",
@@ -215,7 +215,7 @@ class LumeoApiClient:
             "POST",
             f"/v1/apps/{self.application_id}/streams",
             json={
-                "name": name,
+                "name": name[:200],
                 "uri": url,
                 "source": "uri_stream",
                 "stream_type": "file",
@@ -228,7 +228,7 @@ class LumeoApiClient:
         return response_json
     
     @cached(ttl=3600)
-    async def get_pipeline(self, pipeline_id: str) -> JsonObject | None:
+    async def get_pipeline(self, pipeline_id: str) -> Union[JsonObject, None]:
         response = await self.request(
             f"Getting pipeline {pipeline_id}", "GET", f"/v1/apps/{self.application_id}/pipelines/{pipeline_id}"
         )
@@ -236,7 +236,7 @@ class LumeoApiClient:
         return response_json
 
     @cached(ttl=3600)
-    async def get_deployment(self, deployment_id: str) -> JsonObject | None:
+    async def get_deployment(self, deployment_id: str) -> Union[JsonObject, None]:
         response = await self.request(
             f"Getting deployment {deployment_id}", "GET", f"/v1/apps/{self.application_id}/deployments/{deployment_id}"
         )
@@ -244,7 +244,7 @@ class LumeoApiClient:
         return response_json
 
     async def queue_deployment(
-        self, queue_id: str, pipeline_id: str, deployment_configuration: JsonObject, deployment_name: str | None
+        self, queue_id: str, pipeline_id: str, deployment_configuration: JsonObject, deployment_name: Union[str, None]
     ) -> JsonObject:
         response = await self.request(
             f"Queueing deployment for pipeline {pipeline_id} with name '{deployment_name}', configuration {deployment_configuration}",

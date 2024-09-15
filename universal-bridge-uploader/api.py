@@ -74,7 +74,8 @@ class LumeoApiClient:
             return None
         
     async def create_event(
-        self, event_type: str, severity: str, payload: str, deployment_id: Union[str, None], camera_id: Union[str, None]
+        self, event_type: str, severity: str, payload: str, 
+        deployment_id: Union[str, None], camera_id: Union[str, None], stream_id: Union[str, None]
     ) -> None:
         event_json = {
             "category": "ftp-gateway",
@@ -101,6 +102,11 @@ class LumeoApiClient:
             event_json["object"] = "camera"
             event_json["object_id"] = camera_id
             event_json["related_entities"]["camera_id"] = camera_id
+            
+        if stream_id:
+            event_json["object"] = "stream"
+            event_json["object_id"] = stream_id
+            event_json["related_entities"]["stream_id"] = stream_id
 
         await self.request(f"Creating event {event_type}", "POST", f"/v1/apps/{self.application_id}/events", json=event_json)
 
@@ -161,7 +167,7 @@ class LumeoApiClient:
         response_json = response.json()
         return response_json and response_json[0]["id"]
 
-    async def create_file(self, file_name: str, file_size: int, camera_id: str) -> JsonObject:
+    async def create_file(self, file_name: str, file_size: int, camera_id: Union[str,None]) -> JsonObject:
         response = await self.request(
             f"Creating file with file name {file_name}",
             "POST",
@@ -205,11 +211,19 @@ class LumeoApiClient:
             f"/v1/apps/{self.application_id}/files/{file_id}/cloud_status",
             data=status,
         )
+        
+    async def add_tag_to_file(self, file_id: str, tag_id: str) -> None:
+        await self.request(
+            f"Adding tag {tag_id} to file {file_id}",
+            "POST",
+            f"/v1/apps/{self.application_id}/files/{file_id}/tags",
+            json=[tag_id],
+        )
 
-    async def create_lumeo_file_stream(self, file: JsonObject, camera_id: str) -> JsonObject:
+    async def create_lumeo_file_stream(self, file: JsonObject, camera_id: Union[str,None]) -> JsonObject:
         return await self.create_file_stream(file['name'], f"lumeo://{file['id']}", camera_id)
     
-    async def create_file_stream(self, name: str, url: str, camera_id: str) -> JsonObject:        
+    async def create_file_stream(self, name: str, url: str, camera_id: Union[str,None]) -> JsonObject:        
         response = await self.request(
             f"Creating file stream for file {name}",
             "POST",
@@ -226,6 +240,94 @@ class LumeoApiClient:
         )
         response_json = response.json()
         return response_json
+    
+    async def get_file_streams(self, tag_id: str) -> JsonObject:
+        all_streams = []
+        page = 1
+        while True:
+            response = await self.request(
+                f"Getting file streams for tag {tag_id} (page {page})",
+                "GET",
+                f"/v1/apps/{self.application_id}/streams",
+                params={"pagination": "offset", "limit": 50, "page": page, "stream_types[]": "file", "tagged_with[]": tag_id,
+                        "include_tagged_with_descendants": False, "only_untagged": False}
+            )
+            
+            response_json = response.json()            
+            streams = response_json.get('data', [])
+            all_streams.extend(streams)
+            
+            if len(streams) < 50:  # Less than the limit, so it's the last page
+                break
+            else:            
+                page += 1        
+        return all_streams
+        
+    @cached(ttl=3600)
+    async def get_stream_with_id(self, stream_id: str) -> Union[JsonObject, None]:
+        response = await self.request(
+            f"Getting stream with id {stream_id}",
+            "GET",
+            f"/v1/apps/{self.application_id}/streams/{stream_id}"
+        )        
+        if response:            
+            return response.json()
+        else:
+            return None     
+        
+    async def add_tag_to_stream(self, stream_id: str, tag_id: str) -> None:
+        await self.request(
+            f"Adding tag {tag_id} to stream {stream_id}",
+            "POST",
+            f"/v1/apps/{self.application_id}/streams/{stream_id}/tags",
+            json=[tag_id],
+        )  
+    
+    async def get_tag_id_by_path(self, tag_path: str) -> JsonObject:
+        tag_names = tag_path.split("/")
+        current_tag_id = None
+        for tag_name in tag_names:
+            params = {"pagination": "offset", "page": 1, "limit": 1, "tag_names[]": tag_name}
+            if current_tag_id:
+                params['parents[]'] = current_tag_id
+                
+            response = await self.request(
+                f"Getting tag {tag_name}", "GET", f"/v1/apps/{self.application_id}/tags", params=params
+            )
+            if response:
+                tags_list = response.json()
+                if tags_list['data']:
+                    current_tag_id = tags_list['data'][0]['id']
+                else:
+                    return None
+            else:
+                return None
+        self.log_debug(f"Tag leaf {tag_path} found with id {current_tag_id}")                
+        return current_tag_id
+    
+    async def create_tag_path(self, tag_path: str) -> JsonObject:
+        tag_names = tag_path.split("/")
+        current_tag_id = None
+        for tag_name in tag_names:
+            # Check if the tag already exists
+            existing_tag = await self.get_tag_id_by_path("/".join(tag_names[:tag_names.index(tag_name)+1]))
+            if existing_tag:
+                current_tag_id = existing_tag
+            else:
+                # Create the tag if it doesn't exist
+                response = await self.request(
+                    f"Creating tag {tag_name}", "POST", f"/v1/apps/{self.application_id}/tags",
+                    json={
+                        "name": tag_name,
+                        "parent": current_tag_id,
+                    },
+                )
+                if response:
+                    response_json = response.json()
+                    current_tag_id = response_json["id"]
+                else:
+                    return None
+        return current_tag_id
     
     @cached(ttl=3600)
     async def get_pipeline(self, pipeline_id: str) -> Union[JsonObject, None]:
